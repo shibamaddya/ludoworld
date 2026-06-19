@@ -1005,6 +1005,15 @@ function attachRoomListeners(code){
     window._FBremove(msgRef).catch(()=>{});
   }));
   if(net) net.listeners=listeners;
+  // Room status listener
+listeners.push(fbListen(`rooms/${code}/meta`, meta => {
+  if (!net || net.role === "host" || !meta) return;
+
+  if (meta.status === "started") {
+    document.getElementById("lobbyStatus").textContent =
+      "Game starting...";
+  }
+}));
 }
 function hostHandleMove(tokenId){
   if(!state.movable.includes(tokenId)) return;
@@ -1087,9 +1096,16 @@ document.getElementById("startOnlineBtn").onclick=async ()=>{
   const joined=Object.keys(byColor).length;
   if(joined<2){ alert("Need at least 2 players."); return; }
   await fbUpdate(`rooms/${net.code}/meta`, {status:"started"});
-  const activeColors=LOBBY_COLOR_ORDER.filter(c=>byColor[c]).slice(0,net.maxPlayers);
-  launchGame(activeColors, [], "normal", net.myColors);
-  netSync();
+
+const activeColors =
+  LOBBY_COLOR_ORDER.filter(c => byColor[c]).slice(0, net.maxPlayers);
+
+launchGame(activeColors, [], "normal", net.myColors);
+
+// Force initial sync BEFORE host begins playing
+await fbSet(`rooms/${net.code}/gameState`,
+  JSON.parse(JSON.stringify(state))
+);
 };
 
 /* ---- JOIN ROOM ---- */
@@ -1248,6 +1264,11 @@ function launchGame(active, ai, difficulty, myColors){
   showGameUI();
   log("Game started! "+active.join(", ")+" playing."+(ai.length?` (AI: ${difficulty})`:""));
   document.getElementById("rollBtn").disabled=!isMyTurnControllable();
+  if (state.canRoll && isMyTurnControllable()) {
+    startTurnTimer(() => {
+        if (state.canRoll) rollDice();
+    });
+}
   if(state.aiColors.includes(currentColor())){ setTimeout(doRoll,800); }
   else { startTurnTimer(()=>{ if(state.canRoll && isMyTurnControllable()) rollDice(); }); }
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Ludo Royale</title>
+<title>Ludo World</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -55,7 +55,8 @@ body.in-game .app{gap:16px;}
   background: repeating-linear-gradient(45deg, rgba(0,0,0,0.015) 0 2px, transparent 2px 6px), linear-gradient(135deg,var(--parchment),var(--parchment-d));
   border-radius:calc(var(--cell)*0.32);
   box-shadow: 0 30px 70px rgba(0,0,0,.65), 0 0 0 calc(var(--cell)*0.07) #fff8e3, 0 0 0 calc(var(--cell)*0.13) var(--gold-deep), 0 0 0 calc(var(--cell)*0.16) var(--gold-bright), 0 0 0 calc(var(--cell)*0.19) var(--gold-deep), 0 0 0 calc(var(--cell)*0.30) #07050f, inset 0 0 30px rgba(0,0,0,.18);
-  overflow:hidden; margin:0 auto; transition:box-shadow .4s ease;
+  overflow:hidden; margin:0 auto; transition:box-shadow .4s ease, transform .55s cubic-bezier(.4,1.2,.5,1);
+  --board-rot:0deg; transform:rotate(var(--board-rot));
 }
 body.in-game .board-wrap{ box-shadow: 0 30px 90px rgba(0,0,0,.7), 0 0 0 calc(var(--cell)*0.07) #fff8e3, 0 0 0 calc(var(--cell)*0.13) var(--gold-deep), 0 0 0 calc(var(--cell)*0.16) var(--gold-bright), 0 0 0 calc(var(--cell)*0.19) var(--gold-deep), 0 0 0 calc(var(--cell)*0.30) #07050f, 0 0 70px rgba(231,195,101,.18);}
 .board-wrap.shake{animation:shake .42s ease;}
@@ -86,7 +87,10 @@ body.in-game .board-wrap{ box-shadow: 0 30px 90px rgba(0,0,0,.7), 0 0 0 calc(var
 .sheen{position:absolute; inset:-50%; background:linear-gradient(115deg, transparent 35%, rgba(255,255,255,.45) 48%, transparent 60%); animation:sheen 3.4s ease-in-out infinite; pointer-events:none;}
 @keyframes sheen{0%{transform:translateX(-60%) translateY(-60%);} 100%{transform:translateX(60%) translateY(60%);}}
 .crown{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:calc(var(--cell)*0.62); filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 10px var(--gold-bright)); animation:crownGlow 2.4s ease-in-out infinite; z-index:2;}
+.crown-icon{display:inline-block; transform:rotate(calc(-1 * var(--board-rot,0deg))); transition:transform .55s cubic-bezier(.4,1.2,.5,1);}
 @keyframes crownGlow{0%,100%{filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 8px var(--gold-bright)); transform:translate(-50%,-50%) scale(1);} 50%{filter:drop-shadow(0 0 8px #fff) drop-shadow(0 0 16px var(--gold-bright)); transform:translate(-50%,-50%) scale(1.08);}}
+.base-panel.inactive{filter:grayscale(0.9) brightness(.45); opacity:.42; transition:filter .3s,opacity .3s;}
+.base-panel.inactive .base-inner::after{content:"NOT PLAYING"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:calc(var(--cell)*0.22); font-weight:800; letter-spacing:1px; color:#444; text-align:center; transform:rotate(calc(-1 * var(--board-rot,0deg)));}
 .token{position:absolute; width:calc(var(--cell)*0.74); height:calc(var(--cell)*0.74); border-radius:50%; box-shadow:0 4px 9px rgba(0,0,0,.55), inset 0 -3px 5px rgba(0,0,0,.32), inset 0 3px 5px rgba(255,255,255,.65), 0 0 0 1px rgba(0,0,0,.35); transition: left .24s cubic-bezier(.4,1.4,.6,1), top .24s cubic-bezier(.4,1.4,.6,1), transform .2s ease; z-index:5; border:2px solid var(--gold-bright);}
 .token::after{content:""; position:absolute; top:14%; left:20%; width:32%; height:22%; background:rgba(255,255,255,.75); border-radius:50%; filter:blur(1px);}
 .token.red{background:radial-gradient(circle at 35% 28%, #ffc1c9, var(--ruby) 58%, var(--ruby-d));}
@@ -271,7 +275,7 @@ body.in-game .panel{width:300px;}
 </div>
 
 <div class="topbar"></div>
-<h1>👑 LUDO ROYALE</h1>
+<h1>👑 LUDO WORLD</h1>
 <div class="tagline">Roll · Capture · Claim the Crown</div>
 
 <div class="app">
@@ -578,21 +582,50 @@ function buildBoard(){
     });
   });
   const center=document.createElement("div"); center.className="center";
-  center.innerHTML='<div class="tri top"></div><div class="tri right"></div><div class="tri bottom"></div><div class="tri left"></div><div class="sheen"></div><div class="crown">👑</div>';
+  center.innerHTML='<div class="tri top"></div><div class="tri right"></div><div class="tri bottom"></div><div class="tri left"></div><div class="sheen"></div><div class="crown"><span class="crown-icon">👑</span></div>';
   board.appendChild(center);
+  markInactivePanels();
+  applyBoardOrientation();
 }
 window.addEventListener('resize', ()=>{ if(state){ buildBoard(); renderTokens(); } });
+
+/* =================================================================
+   SEAT-BASED BOARD ORIENTATION
+   Rotates the whole board so the local player's color always sits
+   bottom-left (the conventional "my seat" corner).
+================================================================= */
+function myPerspectiveColor(){
+  if(net && net.active && net.myColor) return net.myColor;
+  if(state && state.myColors && state.myColors.length===1 && !(net&&net.active) && state.aiColors && state.aiColors.length) return state.myColors[0];
+  return null;
+}
+function applyBoardOrientation(){
+  const board=document.getElementById("board"); if(!board) return;
+  const color=myPerspectiveColor();
+  let deg=0;
+  if(color){ const idx=COLORS.indexOf(color); if(idx>=0) deg=(3-idx)*90; }
+  board.style.setProperty("--board-rot", deg+"deg");
+}
+/* ---- Mark base panels for colors that are not part of this game ---- */
+function markInactivePanels(){
+  if(!document.getElementById("board").querySelector(".base-panel")) return;
+  const activeSet = state ? new Set(state.order) : new Set(COLORS);
+  document.querySelectorAll(".base-panel").forEach(panel=>{
+    const isActive = activeSet.has(panel.dataset.color);
+    panel.classList.toggle("inactive", !isActive);
+  });
+}
 
 /* =================================================================
    GAME STATE
 ================================================================= */
 function initState(activeColors, aiColors, aiDifficulty, myColors){
   const tokens=[];
-  COLORS.forEach(color=>{ for(let i=0;i<4;i++) tokens.push({id:color+i, color, baseSlot:i, status:"base", step:0}); });
+  COLORS.filter(c=>activeColors.includes(c)).forEach(color=>{ for(let i=0;i<4;i++) tokens.push({id:color+i, color, baseSlot:i, status:"base", step:0}); });
   const stats={}; COLORS.forEach(c=>stats[c]={captures:0});
   return {
     tokens, activeColors, aiColors, aiDifficulty: aiDifficulty||"normal", myColors: myColors||COLORS.slice(),
-    turnIdx:0, order: COLORS.filter(c=>activeColors.includes(c)),
+    turnIdx:0, order: COLORS.filter(c=>activeColors.includes(c)), finished:[],
     dice:1, consecSix:0, canRoll:true, movable:[], gameOver:false, stats,
     settings:{
       timer: document.getElementById("timerToggle").classList.contains("on"),
@@ -815,13 +848,30 @@ function finishMove(token){
   renderScores(); netSync();
   setTimeout(()=>{
     renderTokens(); checkWin(token.color); if(state.gameOver) return;
+    if(state.finished.includes(token.color)){ log(`${token.color} has finished and steps aside.`); nextTurn(); return; }
     if(extraTurn){ log(`${currentColor()} gets another roll!`); state.canRoll=true; document.getElementById("rollBtn").disabled=!isMyTurnControllable(); if(state.aiColors.includes(currentColor())){ setTimeout(doRoll,600); } else { startTurnTimer(()=>{ if(state.canRoll && isMyTurnControllable()) rollDice(); }); } }
     else { nextTurn(); }
   },280);
 }
-function checkWin(color){ if(tokensOf(color).every(t=>t.status==="home")){ state.gameOver=true; clearTurnTimer(); Sound.win(); buzz([40,60,40,60,80]); showWin(color); netSync(); } }
+function checkWin(color){
+  if(state.finished.includes(color)) return;
+  if(!tokensOf(color).every(t=>t.status==="home")) return;
+  state.finished.push(color);
+  log(`🏁 ${color.charAt(0).toUpperCase()+color.slice(1)} finished in position ${state.finished.length}!`);
+  Sound.home(); buzz([30,40,30]);
+  const remaining = state.order.filter(c=>!state.finished.includes(c));
+  if(remaining.length<=1){
+    if(remaining.length===1) state.finished.push(remaining[0]);
+    state.gameOver=true; clearTurnTimer(); Sound.win(); buzz([40,60,40,60,80]);
+    showWin(state.finished);
+  }
+  netSync();
+}
 function nextTurn(){
-  state.turnIdx++; state.movable=[]; state.canRoll=true;
+  state.turnIdx++;
+  let guard=0;
+  while(state.finished.includes(currentColor()) && guard<state.order.length+2){ state.turnIdx++; guard++; }
+  state.movable=[]; state.canRoll=true;
   document.getElementById("rollBtn").disabled=!isMyTurnControllable();
   renderTurn(); renderTokens(); netSync();
   if(state.aiColors.includes(currentColor())){ setTimeout(doRoll,800); }
@@ -862,9 +912,13 @@ function aiPlay(moves,dice){
 /* =================================================================
    WIN / CELEBRATION
 ================================================================= */
-function showWin(color){
-  document.getElementById("winText").textContent=`🎉 ${color.toUpperCase()} WINS! 🎉`;
+function showWin(ranking){
+  const colors = Array.isArray(ranking) ? ranking : [ranking];
+  const medals=["🥇","🥈","🥉","🎗️"];
+  const winText=document.getElementById("winText");
+  winText.innerHTML = colors.map((c,i)=>`<div style="margin:4px 0;"><span>${medals[i]||"•"}</span> <span style="color:${COLOR_HEX[c]};">${c.toUpperCase()}</span>${i===0?" WINS!":""}</div>`).join("");
   document.getElementById("overlay").style.display="flex";
+  const champion=colors[0];
   for(let i=0;i<90;i++){
     const c=document.createElement("div"); c.className="confetti";
     c.style.left=Math.random()*100+"vw"; c.style.background=[COLOR_HEX.red,COLOR_HEX.green,COLOR_HEX.yellow,COLOR_HEX.blue,"#ffe9a8"][i%5];
@@ -915,6 +969,24 @@ function fbPushIntent(obj){ if(net && net.code) fbPush(`rooms/${net.code}/intent
 function netSync(){
   if(!net || !net.active || net.role!=="host" || !state) return;
   fbSet(`rooms/${net.code}/gameState`, JSON.parse(JSON.stringify(state))).catch(()=>{});
+}
+/* ---- Guest: Firebase RTDB silently drops empty arrays / converts them to null.
+   Without this, a fresh online game (aiColors:[], movable:[], finished:[]) arrives
+   on the guest side with those fields missing, and the very next call like
+   state.aiColors.includes(...) throws — silently freezing the guest's game
+   right after the host presses "Start". This restores safe defaults. ---- */
+function sanitizeIncomingState(gs){
+  if(!gs) return gs;
+  if(!Array.isArray(gs.aiColors)) gs.aiColors=[];
+  if(!Array.isArray(gs.movable)) gs.movable=[];
+  if(!Array.isArray(gs.finished)) gs.finished=[];
+  if(!Array.isArray(gs.order)) gs.order=COLORS.filter(c=>gs.activeColors && gs.activeColors.includes(c));
+  if(!Array.isArray(gs.tokens)) gs.tokens=[];
+  if(!Array.isArray(gs.activeColors)) gs.activeColors=gs.order.slice();
+  if(!gs.stats) gs.stats={};
+  COLORS.forEach(c=>{ if(!gs.stats[c]) gs.stats[c]={captures:0}; });
+  if(!gs.settings) gs.settings={timer:true,vibration:true};
+  return gs;
 }
 
 /* ---- Lobby UI ---- */
@@ -979,12 +1051,12 @@ function attachRoomListeners(code){
   listeners.push(fbListen(`rooms/${code}/gameState`, gs=>{
     if(!net || net.role==="host" || !gs) return;
     const savedMyColors=net.myColors||[];
-    state=gs; state.myColors=savedMyColors;
+    state=sanitizeIncomingState(gs); state.myColors=savedMyColors;
     buildBoard(); renderTokens(); renderTurn(); renderScores(); renderPlayerStrip();
     hideLobbyScreen();
     showGameUI();
     document.getElementById("rollBtn").disabled=!(state.canRoll && isMyTurnControllable());
-    if(state.gameOver) showWin(currentColor());
+    if(state.gameOver) showWin(state.finished && state.finished.length ? state.finished : [currentColor()]);
   }));
   // Intent listener (host only — processes guest commands)
   if(net && net.role==="host"){
@@ -1004,16 +1076,14 @@ function attachRoomListeners(code){
     if(msg && msg.emoji) showReaction(msg.emoji);
     window._FBremove(msgRef).catch(()=>{});
   }));
-  if(net) net.listeners=listeners;
   // Room status listener
-listeners.push(fbListen(`rooms/${code}/meta`, meta => {
-  if (!net || net.role === "host" || !meta) return;
-
-  if (meta.status === "started") {
-    document.getElementById("lobbyStatus").textContent =
-      "Game starting...";
-  }
-}));
+  listeners.push(fbListen(`rooms/${code}/meta`, meta => {
+    if (!net || net.role === "host" || !meta) return;
+    if (meta.status === "started") {
+      document.getElementById("lobbyStatus").textContent = "Game starting...";
+    }
+  }));
+  if(net) net.listeners=listeners;
 }
 function hostHandleMove(tokenId){
   if(!state.movable.includes(tokenId)) return;

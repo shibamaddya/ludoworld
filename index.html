@@ -236,9 +236,25 @@ body.in-game .panel{width:300px;}
 .reaction-float{position:fixed; z-index:70; font-size:2.4em; pointer-events:none; animation:reactFloat 1.6s ease-out forwards; filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));}
 @keyframes reactFloat{0%{opacity:0; transform:translateY(0) scale(.4);} 12%{opacity:1; transform:translateY(-10px) scale(1.15);} 100%{opacity:0; transform:translateY(-140px) scale(1);}}
 
+/* ---- FUTURISTIC AURA ---- */
+.board-stage{position:relative; z-index:1;}
+.board-stage::before{
+  content:""; position:absolute; inset:-16px; border-radius:34px; z-index:-1;
+  background:conic-gradient(from 0deg, var(--gold-bright), transparent 18%, var(--sapphire) 38%, transparent 58%, var(--ruby) 76%, transparent 96%);
+  opacity:.32; filter:blur(20px); animation:auraSpin 9s linear infinite;
+}
+@keyframes auraSpin{to{transform:rotate(360deg);}}
+body.in-game .board-stage::before{opacity:.4;}
+
+/* ---- PANEL DRAWER TOGGLE (mobile/tablet, in-game) ---- */
+.drawer-toggle{display:none; position:fixed; bottom:max(14px, env(safe-area-inset-bottom)); right:14px; z-index:46; width:50px; height:50px; border-radius:50%; font-size:1.3em;
+  background:linear-gradient(135deg,var(--gold-bright),var(--gold-deep)); color:#2a1c00; box-shadow:0 6px 20px rgba(0,0,0,.55), 0 0 0 2px rgba(255,255,255,.25);}
+.drawer-backdrop{display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:44;}
+.drawer-backdrop.show{display:block;}
+
 /* ---- RESPONSIVE ---- */
 @media (max-width:1024px){.app{gap:18px;}}
-@media (max-width:760px){
+@media (max-width:900px){
   body{padding:10px;}
   .app{flex-direction:column; align-items:center; gap:14px;}
   .panel{width:100%; max-width:calc(var(--cell)*15);}
@@ -251,6 +267,24 @@ body.in-game .panel{width:300px;}
   .mode-card{padding:13px;}
   .color-chip{padding:12px; font-size:.95em;}
   .reaction-btn{font-size:1.45em; padding:8px 10px;}
+
+  /* Full-screen board mode: panel becomes a swipe-up drawer so the board owns the screen */
+  body.in-game .app{display:block; width:100%;}
+  body.in-game .board-stage{width:100%; display:flex; justify-content:center; margin:0 auto;}
+  body.in-game .panel{
+    position:fixed; left:0; right:0; bottom:0; width:100%; max-width:100%; margin:0;
+    max-height:72vh; background:linear-gradient(165deg,#1d1846,#0b0920); border:1px solid var(--panel-line);
+    border-bottom:none; border-radius:22px 22px 0 0; padding:16px 16px max(16px, env(safe-area-inset-bottom));
+    box-shadow:0 -14px 50px rgba(0,0,0,.65), 0 0 0 1px rgba(231,195,101,.18) inset;
+    transform:translateY(calc(100% - 6px)); transition:transform .38s cubic-bezier(.4,1.1,.4,1);
+    z-index:45; overflow-y:auto; gap:12px;
+  }
+  body.in-game .panel::before{
+    content:""; position:sticky; top:0; display:block; width:44px; height:5px; border-radius:4px;
+    background:rgba(255,255,255,.3); margin:0 auto 10px;
+  }
+  body.in-game .panel.drawer-open{transform:translateY(0);}
+  body.in-game .drawer-toggle{display:flex;}
 }
 @media (max-width:420px){
   .code-digit{width:32px; height:42px; font-size:1.25em;}
@@ -258,6 +292,9 @@ body.in-game .panel{width:300px;}
   .dice-btn{padding:10px 20px; font-size:.95em;}
   .lobby-slot{padding:9px 10px;}
   .lobby-slot .nm{font-size:.85em;}
+}
+@media (max-height:480px) and (orientation:landscape){
+  body.in-game .panel{max-height:88vh;}
 }
 @media (hover:none){
   .mode-card:hover, .icon-btn:hover, .lobby-copy:hover, .reaction-btn:hover{transform:none;}
@@ -273,6 +310,8 @@ body.in-game .panel{width:300px;}
   <button class="icon-btn" id="muteBtn" title="Mute/Unmute">🔊</button>
   <button class="icon-btn" id="fsBtn" title="Toggle fullscreen">⛶</button>
 </div>
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<button class="drawer-toggle" id="drawerToggle" title="Menu">☰</button>
 
 <div class="topbar"></div>
 <h1>👑 LUDO WORLD</h1>
@@ -476,13 +515,21 @@ body.in-game .panel{width:300px;}
 ================================================================= */
 function resizeBoard(){
   const inGame = document.body.classList.contains('in-game');
-  const panelSpace = window.innerWidth>760 ? (inGame?320:360) : 0;
-  const heightFrac = inGame ? 0.84 : 0.62;
-  const maxW = Math.min(window.innerWidth - panelSpace - 40, window.innerHeight*heightFrac, inGame?720:600);
+  const stacked = window.innerWidth<=900; // panel is an overlay drawer below this width
+  let maxW;
+  if(stacked){
+    const pad = inGame ? 10 : 24;
+    maxW = Math.min(window.innerWidth-pad, window.innerHeight-pad, inGame?940:600);
+  } else {
+    const panelSpace = inGame?320:360;
+    const heightFrac = inGame?0.92:0.62;
+    maxW = Math.min(window.innerWidth - panelSpace - 40, window.innerHeight*heightFrac, inGame?760:600);
+  }
   const cell = Math.max(maxW/15, 16);
   document.documentElement.style.setProperty('--cell', cell+"px");
 }
 window.addEventListener('resize', resizeBoard);
+window.addEventListener('orientationchange', ()=>setTimeout(resizeBoard,150));
 resizeBoard();
 
 /* =================================================================
@@ -759,7 +806,7 @@ function showDiceFace(n){ for(let i=1;i<=9;i++) document.getElementById("p"+i).s
 function rollDice(){
   if(!state || !state.canRoll || state.gameOver) return;
   if(!isMyTurnControllable()) return;
-  clearTurnTimer();
+  clearTurnTimer(); closeDrawer();
   if(net && net.active && net.role==="guest"){
     fbPushIntent({action:"roll"});
     state.canRoll=false; document.getElementById("rollBtn").disabled=true;
@@ -796,7 +843,7 @@ function onTokenClick(tokenId){
   if(state.gameOver) return;
   if(!state.movable.includes(tokenId)) return;
   if(!isMyTurnControllable()) return;
-  clearTurnTimer(); hideGhost();
+  clearTurnTimer(); hideGhost(); closeDrawer();
   if(net && net.active && net.role==="guest"){
     fbPushIntent({action:"move", tokenId});
     state.movable=[]; renderTokens(); return;
@@ -948,6 +995,14 @@ function fireworkBurst(){
      rooms/{code}/reactions/{pushKey} → {emoji}
 ================================================================= */
 const LOBBY_COLOR_ORDER=["red","green","yellow","blue"];
+/* Diagonal opposite seats on the board: red<->yellow, green<->blue.
+   The first guest to join always gets the host's opposite color. */
+const OPPOSITE_COLOR={red:"yellow",yellow:"red",green:"blue",blue:"green"};
+function colorAssignOrder(hostColor){
+  const opp=OPPOSITE_COLOR[hostColor]||"yellow";
+  const rest=LOBBY_COLOR_ORDER.filter(c=>c!==hostColor && c!==opp);
+  return [opp, ...rest];
+}
 const MY_UUID="u"+Math.random().toString(36).slice(2)+Date.now().toString(36);
 // net object shape: { role, code, myColor, myColors, maxPlayers, active, listeners:[] }
 function genCode(){ return String(Math.floor(100000+Math.random()*900000)); }
@@ -1078,7 +1133,17 @@ function attachRoomListeners(code){
   }));
   // Room status listener
   listeners.push(fbListen(`rooms/${code}/meta`, meta => {
-    if (!net || net.role === "host" || !meta) return;
+    if (!net || net.role === "host") return;
+    if (!meta) {
+      // Room was removed — host left/cancelled before the game started.
+      if (document.getElementById("lobbyScreen").classList.contains("show")) {
+        detachListeners(); net=null; hideLobbyScreen();
+        document.getElementById("joinFlow").style.display="none";
+        document.getElementById("onlineChoice").style.display="block";
+        alert("The host has closed the room.");
+      }
+      return;
+    }
     if (meta.status === "started") {
       document.getElementById("lobbyStatus").textContent = "Game starting...";
     }
@@ -1204,16 +1269,31 @@ document.getElementById("connectBtn").onclick=async ()=>{
     if(!metaSnap.exists()){ document.getElementById("joinStatus").textContent="❌ Room not found. Check the code."; return; }
     const meta=metaSnap.val();
     if(meta.status==="started"){ document.getElementById("joinStatus").textContent="❌ Game already started."; return; }
-
-    // Check for a free slot
-    const plSnap=await fbGet(`rooms/${code}/players`); const players=plSnap.val()||{};
-    const usedColors=new Set(Object.values(players).map(p=>p.color).filter(Boolean));
     const maxP=meta.maxPlayers||4;
-    const freeColor=LOBBY_COLOR_ORDER.slice(0,maxP).find(c=>!usedColors.has(c));
-    if(!freeColor){ document.getElementById("joinStatus").textContent="❌ Room is full."; return; }
+    const hostColor=meta.hostColor||"red";
+    const preferredOrder=colorAssignOrder(hostColor).filter(c=>LOBBY_COLOR_ORDER.slice(0,maxP).includes(c));
 
-    // Write self to players
-    await fbSet(`rooms/${code}/players/${MY_UUID}`, { name, color:freeColor, isHost:false, joinedAt:Date.now() });
+    // Pick a free color and claim it. Firebase writes here aren't transactional,
+    // so two guests could briefly pick the same color if they join at the exact
+    // same instant — re-check after writing and yield the seat to whichever
+    // joinedAt timestamp is earlier, retrying with the next color if we lose.
+    let freeColor=null, attempt=0, claimed=false;
+    while(attempt<5 && !claimed){
+      const plSnap=await fbGet(`rooms/${code}/players`); const players=plSnap.val()||{};
+      const usedColors=new Set(Object.values(players).map(p=>p.color).filter(Boolean));
+      freeColor=preferredOrder.find(c=>!usedColors.has(c));
+      if(!freeColor){ document.getElementById("joinStatus").textContent="❌ Room is full."; return; }
+      const myJoinedAt=Date.now();
+      await fbSet(`rooms/${code}/players/${MY_UUID}`, { name, color:freeColor, isHost:false, joinedAt:myJoinedAt });
+      const verifySnap=await fbGet(`rooms/${code}/players`); const verifyPlayers=verifySnap.val()||{};
+      const sameColor=Object.entries(verifyPlayers).filter(([,p])=>p.color===freeColor);
+      if(sameColor.length<=1){ claimed=true; break; }
+      sameColor.sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));
+      if(sameColor[0][0]===MY_UUID){ claimed=true; break; } // we were first, others will yield
+      await fbRemove(`rooms/${code}/players/${MY_UUID}`).catch(()=>{});
+      attempt++;
+    }
+    if(!claimed){ document.getElementById("joinStatus").textContent="❌ Couldn't claim a seat, please try again."; return; }
 
     net={ role:"guest", code, myColor:freeColor, myColors:[freeColor], maxPlayers:maxP, active:true, listeners:[], _playersSnap:{} };
     attachRoomListeners(code);
@@ -1234,6 +1314,13 @@ document.getElementById("leaveLobbyBtn").onclick=async ()=>{
   document.getElementById("codeInput").value="";
   const url=new URL(location.href); url.searchParams.delete("room"); history.replaceState(null,"",url);
 };
+
+/* ---- Best-effort: free our seat if the tab is closed/reloaded mid-lobby ---- */
+window.addEventListener("pagehide", ()=>{
+  if(net && net.code && !(state && net.active && document.body.classList.contains("in-game"))){
+    try{ fbRemove(`rooms/${net.code}/players/${MY_UUID}`); }catch(e){}
+  }
+});
 
 /* ---- Auto-join from URL ---- */
 function tryAutoJoin(){
@@ -1303,6 +1390,17 @@ document.getElementById("startAiBtn").onclick=()=>{
 /* =================================================================
    FULLSCREEN / IMMERSIVE MODE
 ================================================================= */
+/* =================================================================
+   MOBILE/TABLET PANEL DRAWER
+================================================================= */
+function openDrawer(){ document.querySelector(".panel").classList.add("drawer-open"); document.getElementById("drawerBackdrop").classList.add("show"); }
+function closeDrawer(){ document.querySelector(".panel").classList.remove("drawer-open"); document.getElementById("drawerBackdrop").classList.remove("show"); }
+document.getElementById("drawerToggle").onclick=()=>{
+  const p=document.querySelector(".panel");
+  if(p.classList.contains("drawer-open")) closeDrawer(); else openDrawer();
+};
+document.getElementById("drawerBackdrop").onclick=closeDrawer;
+
 function enterImmersiveMode(){
   document.body.classList.add("in-game"); resizeBoard(); window.scrollTo(0,0);
   try{ const el=document.documentElement; if(el.requestFullscreen) el.requestFullscreen().catch(()=>{}); else if(el.webkitRequestFullscreen) el.webkitRequestFullscreen(); }catch(e){}
